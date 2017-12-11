@@ -1,0 +1,18 @@
+title: 'Ramesh Yoha | Dreamographers'
+default_lang: en
+author:
+  name: 'Ramesh Yoha'
+  email: ramesh.yohalingam@gmail.com
+taxonomies:
+  - photography
+  - photographer
+  - developer
+metadata:
+  description: 'Welcome to my Photography Portfolio'
+summary:
+  enabled: true
+  format: short
+  size: 300
+  delimiter: '==='
+blog:
+  route: /blog

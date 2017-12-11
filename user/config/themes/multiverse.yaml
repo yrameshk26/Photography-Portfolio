@@ -1,0 +1,33 @@
+enabled: true
+about_label: About Ramesh
+about_header: 'Photography is the beauty of Life Captured.'
+about_content: 'The passion towards Photography made me go around the 🌍 and capture the moments with one extra 👁️/📸. Started shooting since 2011 and never stopped. Loves to shoot Landscapes, Portaits, Creative and Candid. Covers local events as well. Still keeping on learning new things everyday.'
+copyright: '&copy; Ramesh Yoha | &copy; Dreamographers'
+social_networks:
+  -
+    icon: fa-twitter
+    label: Twitter
+    url: 'https://twitter.com/RameshYoha'
+  -
+    icon: fa-facebook
+    label: Facebook
+    url: 'https://www.facebook.com/Ramesh.K.Yoha'
+  -
+    icon: fa-instagram
+    label: Instagram
+    url: 'https://www.instagram.com/yrameshk/'
+  -
+    icon: fa-github
+    label: GitHub
+    url: 'https://github.com/yrameshk26'
+  -
+    icon: fa-youtube
+    label: YouTube
+    url: 'https://www.youtube.com/channel/UCwGH1NcE7D4LNV2NHDnBNrg'
+  -
+    icon: fa-linkedin
+    label: LinkedIn
+    url: 'https://www.linkedin.com/in/ramesh-yoha/'
+contact_header: 'Get in touch'
+social_header: 'Follow me on ...'
+favicon: favicon.png
