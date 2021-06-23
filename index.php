@@ -15,6 +15,7 @@ define('GRAV_LOG_PATH', '/var/www/example.com/html');
 define('GRAV_TMP_PATH', '/var/www/example.com/html');
 define('GRAV_BACKUP_PATH', '/var/www/example.com/html');
 define('GRAV_WEBROOT', '/');
+define('GRAV_USER_PATH', '/');
 
 // Ensure vendor libraries exist
 $autoload = __DIR__ . '/vendor/autoload.php';
