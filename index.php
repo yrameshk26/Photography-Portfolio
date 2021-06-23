@@ -9,14 +9,6 @@
 namespace Grav;
 define('GRAV_PHP_MIN', '5.5.9');
 
-define('GRAV_SYSTEM_PATH', '/var/www/example.com/system');
-define('GRAV_CACHE_PATH', '/var/www/example.com/html');
-define('GRAV_LOG_PATH', '/var/www/example.com/html');
-define('GRAV_TMP_PATH', '/var/www/example.com/html');
-define('GRAV_BACKUP_PATH', '/var/www/example.com/html');
-define('GRAV_WEBROOT', '/');
-define('GRAV_USER_PATH', '/');
-
 // Ensure vendor libraries exist
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (!is_file($autoload)) {
