@@ -1,26 +1,31 @@
 <?php
+
 /**
- * @package    Grav.Common
+ * @package    Grav\Common
  *
- * @copyright  Copyright (C) 2014 - 2017 RocketTheme, LLC. All rights reserved.
+ * @copyright  Copyright (c) 2015 - 2021 Trilby Media, LLC. All rights reserved.
  * @license    MIT License; see LICENSE file for details.
  */
 
 namespace Grav\Common;
 
-abstract class Getters implements \ArrayAccess, \Countable
+use ArrayAccess;
+use Countable;
+use function count;
+
+/**
+ * Class Getters
+ * @package Grav\Common
+ */
+abstract class Getters implements ArrayAccess, Countable
 {
-    /**
-     * Define variable used in getters.
-     *
-     * @var string
-     */
+    /** @var string Define variable used in getters. */
     protected $gettersVariable = null;
 
     /**
      * Magic setter method
      *
-     * @param mixed $offset Medium name value
+     * @param int|string $offset Medium name value
      * @param mixed $value  Medium value
      */
     public function __set($offset, $value)
@@ -31,8 +36,7 @@ abstract class Getters implements \ArrayAccess, \Countable
     /**
      * Magic getter method
      *
-     * @param  mixed $offset Medium name value
-     *
+     * @param  int|string $offset Medium name value
      * @return mixed         Medium value
      */
     public function __get($offset)
@@ -43,8 +47,7 @@ abstract class Getters implements \ArrayAccess, \Countable
     /**
      * Magic method to determine if the attribute is set
      *
-     * @param  mixed $offset Medium name value
-     *
+     * @param  int|string $offset Medium name value
      * @return boolean         True if the value is set
      */
     public function __isset($offset)
@@ -55,7 +58,7 @@ abstract class Getters implements \ArrayAccess, \Countable
     /**
      * Magic method to unset the attribute
      *
-     * @param mixed $offset The name value to unset
+     * @param int|string $offset The name value to unset
      */
     public function __unset($offset)
     {
@@ -63,8 +66,7 @@ abstract class Getters implements \ArrayAccess, \Countable
     }
 
     /**
-     * @param mixed $offset
-     *
+     * @param int|string $offset
      * @return bool
      */
     public function offsetExists($offset)
@@ -73,14 +75,13 @@ abstract class Getters implements \ArrayAccess, \Countable
             $var = $this->gettersVariable;
 
             return isset($this->{$var}[$offset]);
-        } else {
-            return isset($this->{$offset});
         }
+
+        return isset($this->{$offset});
     }
 
     /**
-     * @param mixed $offset
-     *
+     * @param int|string $offset
      * @return mixed
      */
     public function offsetGet($offset)
@@ -88,14 +89,14 @@ abstract class Getters implements \ArrayAccess, \Countable
         if ($this->gettersVariable) {
             $var = $this->gettersVariable;
 
-            return isset($this->{$var}[$offset]) ? $this->{$var}[$offset] : null;
-        } else {
-            return isset($this->{$offset}) ? $this->{$offset} : null;
+            return $this->{$var}[$offset] ?? null;
         }
+
+        return $this->{$offset} ?? null;
     }
 
     /**
-     * @param mixed $offset
+     * @param int|string $offset
      * @param mixed $value
      */
     public function offsetSet($offset, $value)
@@ -109,7 +110,7 @@ abstract class Getters implements \ArrayAccess, \Countable
     }
 
     /**
-     * @param mixed $offset
+     * @param int|string $offset
      */
     public function offsetUnset($offset)
     {
@@ -128,10 +129,10 @@ abstract class Getters implements \ArrayAccess, \Countable
     {
         if ($this->gettersVariable) {
             $var = $this->gettersVariable;
-            count($this->{$var});
-        } else {
-            count($this->toArray());
+            return count($this->{$var});
         }
+
+        return count($this->toArray());
     }
 
     /**
@@ -145,16 +146,16 @@ abstract class Getters implements \ArrayAccess, \Countable
             $var = $this->gettersVariable;
 
             return $this->{$var};
-        } else {
-            $properties = (array)$this;
-            $list = [];
-            foreach ($properties as $property => $value) {
-                if ($property[0] != "\0") {
-                    $list[$property] = $value;
-                }
-            }
-
-            return $list;
         }
+
+        $properties = (array)$this;
+        $list = [];
+        foreach ($properties as $property => $value) {
+            if ($property[0] !== "\0") {
+                $list[$property] = $value;
+            }
+        }
+
+        return $list;
     }
 }

@@ -1,29 +1,44 @@
 <?php
+
 /**
- * @package    Grav.Common.Service
+ * @package    Grav\Common\Service
  *
- * @copyright  Copyright (C) 2014 - 2017 RocketTheme, LLC. All rights reserved.
+ * @copyright  Copyright (c) 2015 - 2021 Trilby Media, LLC. All rights reserved.
  * @license    MIT License; see LICENSE file for details.
  */
 
 namespace Grav\Common\Service;
 
+use DirectoryIterator;
 use Grav\Common\Config\CompiledBlueprints;
 use Grav\Common\Config\CompiledConfig;
 use Grav\Common\Config\CompiledLanguages;
 use Grav\Common\Config\Config;
 use Grav\Common\Config\ConfigFileFinder;
 use Grav\Common\Config\Setup;
+use Grav\Common\Language\Language;
 use Pimple\Container;
 use Pimple\ServiceProviderInterface;
+use RocketTheme\Toolbox\File\YamlFile;
 use RocketTheme\Toolbox\ResourceLocator\UniformResourceLocator;
 
+/**
+ * Class ConfigServiceProvider
+ * @package Grav\Common\Service
+ */
 class ConfigServiceProvider implements ServiceProviderInterface
 {
+    /**
+     * @param Container $container
+     * @return void
+     */
     public function register(Container $container)
     {
         $container['setup'] = function ($c) {
-            return static::setup($c);
+            $setup = new Setup($c);
+            $setup->init();
+
+            return $setup;
         };
 
         $container['blueprints'] = function ($c) {
@@ -31,19 +46,29 @@ class ConfigServiceProvider implements ServiceProviderInterface
         };
 
         $container['config'] = function ($c) {
-            return static::load($c);
+            $config = static::load($c);
+
+            // After configuration has been loaded, we can disable YAML compatibility if strict mode has been enabled.
+            if (!$config->get('system.strict_mode.yaml_compat', true)) {
+                YamlFile::globalSettings(['compat' => false, 'native' => true]);
+            }
+
+            return $config;
         };
 
         $container['languages'] = function ($c) {
             return static::languages($c);
         };
+
+        $container['language'] = function ($c) {
+            return new Language($c);
+        };
     }
 
-    public static function setup(Container $container)
-    {
-        return new Setup($container);
-    }
-
+    /**
+     * @param Container $container
+     * @return mixed
+     */
     public static function blueprints(Container $container)
     {
         /** Setup $setup */
@@ -59,12 +84,18 @@ class ConfigServiceProvider implements ServiceProviderInterface
         $files += (new ConfigFileFinder)->locateFiles($paths);
         $paths = $locator->findResources('plugins://');
         $files += (new ConfigFileFinder)->setBase('plugins')->locateInFolders($paths, 'blueprints');
+        $paths = $locator->findResources('themes://');
+        $files += (new ConfigFileFinder)->setBase('themes')->locateInFolders($paths, 'blueprints');
 
         $blueprints = new CompiledBlueprints($cache, $files, GRAV_ROOT);
 
         return $blueprints->name("master-{$setup->environment}")->load();
     }
 
+    /**
+     * @param Container $container
+     * @return Config
+     */
     public static function load(Container $container)
     {
         /** Setup $setup */
@@ -80,15 +111,24 @@ class ConfigServiceProvider implements ServiceProviderInterface
         $files += (new ConfigFileFinder)->locateFiles($paths);
         $paths = $locator->findResources('plugins://');
         $files += (new ConfigFileFinder)->setBase('plugins')->locateInFolders($paths);
+        $paths = $locator->findResources('themes://');
+        $files += (new ConfigFileFinder)->setBase('themes')->locateInFolders($paths);
 
-        $config = new CompiledConfig($cache, $files, GRAV_ROOT);
-        $config->setBlueprints(function() use ($container) {
+        $compiled = new CompiledConfig($cache, $files, GRAV_ROOT);
+        $compiled->setBlueprints(function () use ($container) {
             return $container['blueprints'];
         });
 
-        return $config->name("master-{$setup->environment}")->load();
+        $config = $compiled->name("master-{$setup->environment}")->load();
+        $config->environment = $setup->environment;
+
+        return $config;
     }
 
+    /**
+     * @param Container $container
+     * @return mixed
+     */
     public static function languages(Container $container)
     {
         /** @var Setup $setup */
@@ -121,8 +161,8 @@ class ConfigServiceProvider implements ServiceProviderInterface
     /**
      * Find specific paths in plugins
      *
-     * @param $plugins
-     * @param $folder_path
+     * @param array $plugins
+     * @param string $folder_path
      * @return array
      */
     private static function pluginFolderPaths($plugins, $folder_path)
@@ -130,9 +170,9 @@ class ConfigServiceProvider implements ServiceProviderInterface
         $paths = [];
 
         foreach ($plugins as $path) {
-            $iterator = new \DirectoryIterator($path);
+            $iterator = new DirectoryIterator($path);
 
-            /** @var \DirectoryIterator $directory */
+            /** @var DirectoryIterator $directory */
             foreach ($iterator as $directory) {
                 if (!$directory->isDir() || $directory->isDot()) {
                     continue;
@@ -149,5 +189,4 @@ class ConfigServiceProvider implements ServiceProviderInterface
         }
         return $paths;
     }
-
 }

@@ -1,24 +1,36 @@
 <?php
+
 /**
- * @package    Grav.Common.Data
+ * @package    Grav\Common\Data
  *
- * @copyright  Copyright (C) 2014 - 2017 RocketTheme, LLC. All rights reserved.
+ * @copyright  Copyright (c) 2015 - 2021 Trilby Media, LLC. All rights reserved.
  * @license    MIT License; see LICENSE file for details.
  */
 
 namespace Grav\Common\Data;
 
 use Grav\Common\Grav;
+use RuntimeException;
 
-class ValidationException extends \RuntimeException
+/**
+ * Class ValidationException
+ * @package Grav\Common\Data
+ */
+class ValidationException extends RuntimeException
 {
+    /** @var array */
     protected $messages = [];
 
-    public function setMessages(array $messages = []) {
+    /**
+     * @param array $messages
+     * @return $this
+     */
+    public function setMessages(array $messages = [])
+    {
         $this->messages = $messages;
 
         $language = Grav::instance()['language'];
-        $this->message = $language->translate('FORM.VALIDATION_FAIL', null, true) . ' ' . $this->message;
+        $this->message = $language->translate('GRAV.FORM.VALIDATION_FAIL', null, true) . ' ' . $this->message;
 
         foreach ($messages as $variable => &$list) {
             $list = array_unique($list);
@@ -30,6 +42,9 @@ class ValidationException extends \RuntimeException
         return $this;
     }
 
+    /**
+     * @return array
+     */
     public function getMessages()
     {
         return $this->messages;

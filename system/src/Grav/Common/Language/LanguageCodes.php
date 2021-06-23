@@ -1,15 +1,21 @@
 <?php
+
 /**
- * @package    Grav.Common.Language
+ * @package    Grav\Common\Language
  *
- * @copyright  Copyright (C) 2014 - 2017 RocketTheme, LLC. All rights reserved.
+ * @copyright  Copyright (c) 2015 - 2021 Trilby Media, LLC. All rights reserved.
  * @license    MIT License; see LICENSE file for details.
  */
 
 namespace Grav\Common\Language;
 
+/**
+ * Class LanguageCodes
+ * @package Grav\Common\Language
+ */
 class LanguageCodes
 {
+    /** @var array */
     protected static $codes = [
         'af'         => [ 'name' => 'Afrikaans',                 'nativeName' => 'Afrikaans' ],
         'ak'         => [ 'name' => 'Akan',                      'nativeName' => 'Akan' ], // unverified native name
@@ -22,6 +28,7 @@ class LanguageCodes
         'bn-BD'      => [ 'name' => 'Bengali (Bangladesh)',      'nativeName' => 'বাংলা (বাংলাদেশ)' ],
         'bn-IN'      => [ 'name' => 'Bengali (India)',           'nativeName' => 'বাংলা (ভারত)' ],
         'br'         => [ 'name' => 'Breton',                    'nativeName' => 'Brezhoneg' ],
+        'bs'         => [ 'name' => 'Bosnian',                   'nativeName' => 'Bosanski' ],
         'ca'         => [ 'name' => 'Catalan',                   'nativeName' => 'Català' ],
         'ca-valencia'=> [ 'name' => 'Catalan (Valencian)',       'nativeName' => 'Català (valencià)' ], // not iso-639-1. a=l10n-drivers
         'cs'         => [ 'name' => 'Czech',                     'nativeName' => 'Čeština' ],
@@ -85,7 +92,7 @@ class LanguageCodes
         'la'         => [ 'name' => 'Latin',                     'nativeName' => 'Latina' ],
         'lb'         => [ 'name' => 'Luxembourgish',             'nativeName' => 'Lëtzebuergesch' ],
         'lg'         => [ 'name' => 'Luganda',                   'nativeName' => 'Luganda' ],
-        'lt'         => [ 'name' => 'Lithuanian',                'nativeName' => 'Lietuvių kalba' ],
+        'lt'         => [ 'name' => 'Lithuanian',                'nativeName' => 'Lietuvių' ],
         'lv'         => [ 'name' => 'Latvian',                   'nativeName' => 'Latviešu' ],
         'mai'        => [ 'name' => 'Maithili',                  'nativeName' => 'मैथिली মৈথিলী' ],
         'mg'         => [ 'name' => 'Malagasy',                  'nativeName' => 'Malagasy' ],
@@ -148,25 +155,36 @@ class LanguageCodes
         'zu'         => [ 'name' => 'Zulu',                      'nativeName' => 'isiZulu' ]
     ];
 
+    /**
+     * @param string $code
+     * @return string|false
+     */
     public static function getName($code)
     {
         return static::get($code, 'name');
     }
 
+    /**
+     * @param string $code
+     * @return string|false
+     */
     public static function getNativeName($code)
     {
         if (isset(static::$codes[$code])) {
             return static::get($code, 'nativeName');
-        } else {
-            if (preg_match('/[a-zA-Z]{2}-[a-zA-Z]{2}/', $code)) {
-                return static::get(substr($code, 0, 2), 'nativeName') . ' (' . substr($code, -2) . ')';
-            } else {
-                return $code;
-            }
-
         }
+
+        if (preg_match('/[a-zA-Z]{2}-[a-zA-Z]{2}/', $code)) {
+            return static::get(substr($code, 0, 2), 'nativeName') . ' (' . substr($code, -2) . ')';
+        }
+
+        return $code;
     }
 
+    /**
+     * @param string $code
+     * @return string
+     */
     public static function getOrientation($code)
     {
         if (isset(static::$codes[$code])) {
@@ -177,14 +195,19 @@ class LanguageCodes
         return 'ltr';
     }
 
+    /**
+     * @param string $code
+     * @return bool
+     */
     public static function isRtl($code)
     {
-        if (static::getOrientation($code) == 'rtl') {
-            return true;
-        }
-        return false;
+        return static::getOrientation($code) === 'rtl';
     }
 
+    /**
+     * @param array $keys
+     * @return array
+     */
     public static function getNames(array $keys)
     {
         $results = [];
@@ -192,17 +215,35 @@ class LanguageCodes
             if (isset(static::$codes[$key])) {
                 $results[$key] = static::$codes[$key];
             }
-
         }
         return $results;
     }
 
-    protected static function get($code, $type)
+    /**
+     * @param string $code
+     * @param string $type
+     * @return string|false
+     */
+    public static function get($code, $type)
     {
         if (isset(static::$codes[$code][$type])) {
             return static::$codes[$code][$type];
-        } else {
-            return false;
         }
+
+        return false;
+    }
+
+    /**
+     * @param bool $native
+     * @return array
+     */
+    public static function getList($native = true)
+    {
+        $list = [];
+        foreach (static::$codes as $key => $names) {
+            $list[$key] = $native ? $names['nativeName'] : $names['name'];
+        }
+
+        return $list;
     }
 }

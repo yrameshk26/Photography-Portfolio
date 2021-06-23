@@ -1,61 +1,70 @@
 <?php
+
 /**
- * @package    Grav.Common.Twig
+ * @package    Grav\Common\Twig
  *
- * @copyright  Copyright (C) 2014 - 2017 RocketTheme, LLC. All rights reserved.
+ * @copyright  Copyright (c) 2015 - 2021 Trilby Media, LLC. All rights reserved.
  * @license    MIT License; see LICENSE file for details.
  */
 
 namespace Grav\Common\Twig;
 
+use Grav\Common\Debugger;
 use Grav\Common\Grav;
 use Grav\Common\Config\Config;
 use Grav\Common\Language\Language;
 use Grav\Common\Language\LanguageCodes;
-use Grav\Common\Page\Page;
+use Grav\Common\Page\Interfaces\PageInterface;
 use Grav\Common\Page\Pages;
+use Grav\Common\Twig\Extension\FilesystemExtension;
+use Grav\Common\Twig\Extension\GravExtension;
+use Grav\Common\Utils;
 use RocketTheme\Toolbox\ResourceLocator\UniformResourceLocator;
 use RocketTheme\Toolbox\Event\Event;
+use Phive\Twig\Extensions\Deferred\DeferredExtension;
+use RuntimeException;
+use Twig\Cache\FilesystemCache;
+use Twig\Environment;
+use Twig\Error\LoaderError;
+use Twig\Extension\CoreExtension;
+use Twig\Extension\DebugExtension;
+use Twig\Extension\StringLoaderExtension;
+use Twig\Loader\ArrayLoader;
+use Twig\Loader\ChainLoader;
+use Twig\Loader\ExistsLoaderInterface;
+use Twig\Loader\FilesystemLoader;
+use Twig\Profiler\Profile;
+use Twig\TwigFilter;
+use Twig\TwigFunction;
+use function function_exists;
+use function in_array;
+use function is_array;
 
+/**
+ * Class Twig
+ * @package Grav\Common\Twig
+ */
 class Twig
 {
-    /**
-     * @var \Twig_Environment
-     */
+    /** @var Environment */
     public $twig;
-
-    /**
-     * @var array
-     */
+    /** @var array */
     public $twig_vars = [];
-
-    /**
-     * @var array
-     */
+    /** @var array */
     public $twig_paths;
-
-    /**
-     * @var string
-     */
+    /** @var string */
     public $template;
 
-    /**
-     * @var Grav
-     */
+    /** @var Grav */
     protected $grav;
-
-    /**
-     * @var \Twig_Loader_Filesystem
-     */
+    /** @var FilesystemLoader */
     protected $loader;
-
-    /**
-     * @var \Twig_Loader_Array
-     */
+    /** @var ArrayLoader */
     protected $loaderArray;
-
-
+    /** @var bool */
     protected $autoescape;
+    /** @var Profile */
+    protected $profile;
 
     /**
      * Constructor
@@ -71,15 +80,16 @@ class Twig
     /**
      * Twig initialization that sets the twig loader chain, then the environment, then extensions
      * and also the base set of twig vars
+     *
+     * @return $this
      */
     public function init()
     {
-        if (!isset($this->twig)) {
+        if (null === $this->twig) {
             /** @var Config $config */
             $config = $this->grav['config'];
             /** @var UniformResourceLocator $locator */
             $locator = $this->grav['locator'];
-
             /** @var Language $language */
             $language = $this->grav['language'];
 
@@ -87,7 +97,7 @@ class Twig
 
             // handle language templates if available
             if ($language->enabled()) {
-                $lang_templates = $locator->findResource('theme://templates/' . ($active_language ? $active_language : $language->getDefault()));
+                $lang_templates = $locator->findResource('theme://templates/' . ($active_language ?: $language->getDefault()));
                 if ($lang_templates) {
                     $this->twig_paths[] = $lang_templates;
                 }
@@ -98,60 +108,125 @@ class Twig
             $this->grav->fireEvent('onTwigTemplatePaths');
 
             // Add Grav core templates location
-            $this->twig_paths = array_merge($this->twig_paths, $locator->findResources('system://templates'));
+            $core_templates = array_merge($locator->findResources('system://templates'), $locator->findResources('system://templates/testing'));
+            $this->twig_paths = array_merge($this->twig_paths, $core_templates);
 
-            $this->loader = new \Twig_Loader_Filesystem($this->twig_paths);
+            $this->loader = new FilesystemLoader($this->twig_paths);
+
+            // Register all other prefixes as namespaces in twig
+            foreach ($locator->getPaths('theme') as $prefix => $_) {
+                if ($prefix === '') {
+                    continue;
+                }
+
+                $twig_paths = [];
+
+                // handle language templates if available
+                if ($language->enabled()) {
+                    $lang_templates = $locator->findResource('theme://'.$prefix.'templates/' . ($active_language ?: $language->getDefault()));
+                    if ($lang_templates) {
+                        $twig_paths[] = $lang_templates;
+                    }
+                }
+
+                $twig_paths = array_merge($twig_paths, $locator->findResources('theme://'.$prefix.'templates'));
+
+                $namespace = trim($prefix, '/');
+                $this->loader->setPaths($twig_paths, $namespace);
+            }
 
             $this->grav->fireEvent('onTwigLoader');
 
-            $this->loaderArray = new \Twig_Loader_Array([]);
-            $loader_chain = new \Twig_Loader_Chain([$this->loaderArray, $this->loader]);
+            $this->loaderArray = new ArrayLoader([]);
+            $loader_chain = new ChainLoader([$this->loaderArray, $this->loader]);
 
             $params = $config->get('system.twig');
             if (!empty($params['cache'])) {
                 $cachePath = $locator->findResource('cache://twig', true, true);
-                $params['cache'] = new \Twig_Cache_Filesystem($cachePath, \Twig_Cache_Filesystem::FORCE_BYTECODE_INVALIDATION);
+                $params['cache'] = new FilesystemCache($cachePath, FilesystemCache::FORCE_BYTECODE_INVALIDATION);
             }
 
-            if (!empty($this->autoescape)) {
-                $params['autoescape'] = $this->autoescape;
+            if (!$config->get('system.strict_mode.twig_compat', false)) {
+                // Force autoescape on for all files if in strict mode.
+                $params['autoescape'] = 'html';
+            } elseif (!empty($this->autoescape)) {
+                $params['autoescape'] = $this->autoescape ? 'html' : false;
+            }
+
+            if (empty($params['autoescape'])) {
+                user_error('Grav 2.0 will have Twig auto-escaping forced on (can be emulated by turning off \'system.strict_mode.twig_compat\' setting in your configuration)', E_USER_DEPRECATED);
             }
 
             $this->twig = new TwigEnvironment($loader_chain, $params);
 
-            if ($config->get('system.twig.undefined_functions')) {
-                $this->twig->registerUndefinedFunctionCallback(function ($name) {
+            $this->twig->registerUndefinedFunctionCallback(function ($name) use ($config) {
+                $allowed = $config->get('system.twig.safe_functions');
+                if (is_array($allowed) && in_array($name, $allowed, true) && function_exists($name)) {
+                    return new TwigFunction($name, $name);
+                }
+                if ($config->get('system.twig.undefined_functions')) {
                     if (function_exists($name)) {
-                        return new \Twig_Function_Function($name);
+                        if (!Utils::isDangerousFunction($name)) {
+                            user_error("PHP function {$name}() was used as Twig function. This is deprecated in Grav 1.7. Please add it to system configuration: `system.twig.safe_functions`", E_USER_DEPRECATED);
+
+                            return new TwigFunction($name, $name);
+                        }
+
+                        /** @var Debugger $debugger */
+                        $debugger = $this->grav['debugger'];
+                        $debugger->addException(new RuntimeException("Blocked potentially dangerous PHP function {$name}() being used as Twig function. If you really want to use it, please add it to system configuration: `system.twig.safe_functions`"));
                     }
 
-                    return new \Twig_Function_Function(function () {
-                    });
-                });
-            }
+                    return new TwigFunction($name, static function () {});
+                }
 
-            if ($config->get('system.twig.undefined_filters')) {
-                $this->twig->registerUndefinedFilterCallback(function ($name) {
+                return false;
+            });
+
+            $this->twig->registerUndefinedFilterCallback(function ($name) use ($config) {
+                $allowed = $config->get('system.twig.safe_filters');
+                if (is_array($allowed) && in_array($name, $allowed, true) && function_exists($name)) {
+                    return new TwigFilter($name, $name);
+                }
+                if ($config->get('system.twig.undefined_filters')) {
                     if (function_exists($name)) {
-                        return new \Twig_Filter_Function($name);
+                        if (!Utils::isDangerousFunction($name)) {
+                            user_error("PHP function {$name}() used as Twig filter. This is deprecated in Grav 1.7. Please add it to system configuration: `system.twig.safe_filters`", E_USER_DEPRECATED);
+
+                            return new TwigFilter($name, $name);
+                        }
+
+                        /** @var Debugger $debugger */
+                        $debugger = $this->grav['debugger'];
+                        $debugger->addException(new RuntimeException("Blocked potentially dangerous PHP function {$name}() being used as Twig filter. If you really want to use it, please add it to system configuration: `system.twig.safe_filters`"));
                     }
 
-                    return new \Twig_Filter_Function(function () {
-                    });
-                });
-            }
+                    return new TwigFilter($name, static function () {});
+                }
+
+                return false;
+            });
 
             $this->grav->fireEvent('onTwigInitialized');
 
             // set default date format if set in config
             if ($config->get('system.pages.dateformat.long')) {
-                $this->twig->getExtension('core')->setDateFormat($config->get('system.pages.dateformat.long'));
+                /** @var CoreExtension $extension */
+                $extension = $this->twig->getExtension(CoreExtension::class);
+                $extension->setDateFormat($config->get('system.pages.dateformat.long'));
             }
             // enable the debug extension if required
             if ($config->get('system.twig.debug')) {
-                $this->twig->addExtension(new \Twig_Extension_Debug());
+                $this->twig->addExtension(new DebugExtension());
             }
-            $this->twig->addExtension(new TwigExtension());
+            $this->twig->addExtension(new GravExtension());
+            $this->twig->addExtension(new FilesystemExtension());
+            $this->twig->addExtension(new DeferredExtension());
+            $this->twig->addExtension(new StringLoaderExtension());
+
+            /** @var Debugger $debugger */
+            $debugger = $this->grav['debugger'];
+            $debugger->addTwigProfiler($this->twig);
 
             $this->grav->fireEvent('onTwigExtensions');
 
@@ -159,7 +234,7 @@ class Twig
             $pages = $this->grav['pages'];
 
             // Set some standard variables for twig
-            $this->twig_vars = $this->twig_vars + [
+            $this->twig_vars += [
                     'config'            => $config,
                     'system'            => $config->get('system'),
                     'theme'             => $config->get('theme'),
@@ -168,7 +243,7 @@ class Twig
                     'assets'            => $this->grav['assets'],
                     'taxonomy'          => $this->grav['taxonomy'],
                     'browser'           => $this->grav['browser'],
-                    'base_dir'          => rtrim(ROOT_DIR, '/'),
+                    'base_dir'          => GRAV_ROOT,
                     'home_url'          => $pages->homeUrl($active_language),
                     'base_url'          => $pages->baseUrl($active_language),
                     'base_url_absolute' => $pages->baseUrl($active_language, true),
@@ -180,10 +255,12 @@ class Twig
                     'language_codes'    => new LanguageCodes,
                 ];
         }
+
+        return $this;
     }
 
     /**
-     * @return \Twig_Environment
+     * @return Environment
      */
     public function twig()
     {
@@ -191,12 +268,21 @@ class Twig
     }
 
     /**
-     * @return \Twig_Loader_Filesystem
+     * @return FilesystemLoader
      */
     public function loader()
     {
         return $this->loader;
     }
+
+    /**
+     * @return Profile
+     */
+    public function profile()
+    {
+        return $this->profile;
+    }
+
 
     /**
      * Adds or overrides a template.
@@ -214,15 +300,14 @@ class Twig
      * 1) Handles modular pages by rendering a specific page based on its modular twig template
      * 2) Renders individual page items for twig processing before the site rendering
      *
-     * @param  Page   $item    The page item to render
-     * @param  string $content Optional content override
+     * @param  PageInterface   $item    The page item to render
+     * @param  string|null $content Optional content override
      *
      * @return string          The rendered output
-     * @throws \Twig_Error_Loader
      */
-    public function processPage(Page $item, $content = null)
+    public function processPage(PageInterface $item, $content = null)
     {
-        $content = $content !== null ? $content : $item->content();
+        $content = $content ?? $item->content();
 
         // override the twig header vars for local resolution
         $this->grav->fireEvent('onTwigPageVariables', new Event(['page' => $item]));
@@ -231,14 +316,14 @@ class Twig
         $twig_vars['page'] = $item;
         $twig_vars['media'] = $item->media();
         $twig_vars['header'] = $item->header();
+        $local_twig = clone $this->twig;
 
-        $local_twig = clone($this->twig);
+        $output = '';
 
         try {
-            // Process Modular Twig
-            if ($item->modularTwig()) {
+            if ($item->isModule()) {
                 $twig_vars['content'] = $content;
-                $template = $item->template() . TEMPLATE_EXT;
+                $template = $this->getPageTwigTemplate($item);
                 $output = $content = $local_twig->render($template, $twig_vars);
             }
 
@@ -249,8 +334,8 @@ class Twig
                 $output = $local_twig->render($name, $twig_vars);
             }
 
-        } catch (\Twig_Error_Loader $e) {
-            throw new \RuntimeException($e->getRawMessage(), 404, $e);
+        } catch (LoaderError $e) {
+            throw new RuntimeException($e->getRawMessage(), 400, $e);
         }
 
         return $output;
@@ -273,12 +358,11 @@ class Twig
 
         try {
             $output = $this->twig->render($template, $vars);
-        } catch (\Twig_Error_Loader $e) {
-            throw new \RuntimeException($e->getRawMessage(), 404, $e);
+        } catch (LoaderError $e) {
+            throw new RuntimeException($e->getRawMessage(), 404, $e);
         }
 
         return $output;
-
     }
 
 
@@ -302,8 +386,8 @@ class Twig
 
         try {
             $output = $this->twig->render($name, $vars);
-        } catch (\Twig_Error_Loader $e) {
-            throw new \RuntimeException($e->getRawMessage(), 404, $e);
+        } catch (LoaderError $e) {
+            throw new RuntimeException($e->getRawMessage(), 404, $e);
         }
 
         return $output;
@@ -313,16 +397,18 @@ class Twig
      * Twig process that renders the site layout. This is the main twig process that renders the overall
      * page and handles all the layout for the site display.
      *
-     * @param string $format Output format (defaults to HTML).
-     *
+     * @param string|null $format Output format (defaults to HTML).
+     * @param array $vars
      * @return string the rendered output
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function processSite($format = null, array $vars = [])
     {
         // set the page now its been processed
         $this->grav->fireEvent('onTwigSiteVariables');
+        /** @var Pages $pages */
         $pages = $this->grav['pages'];
+        /** @var PageInterface $page */
         $page = $this->grav['page'];
         $content = $page->content();
 
@@ -334,7 +420,6 @@ class Twig
         $twig_vars['header'] = $page->header();
         $twig_vars['media'] = $page->media();
         $twig_vars['content'] = $content;
-        $ext = '.' . ($format ? $format : 'html') . TWIG_EXT;
 
         // determine if params are set, if so disable twig cache
         $params = $this->grav['uri']->params(null, true);
@@ -343,32 +428,24 @@ class Twig
         }
 
         // Get Twig template layout
-        $template = $this->template($page->template() . $ext);
+        $template = $this->getPageTwigTemplate($page, $format);
+        $page->templateFormat($format);
 
         try {
             $output = $this->twig->render($template, $vars + $twig_vars);
-        } catch (\Twig_Error_Loader $e) {
+        } catch (LoaderError $e) {
             $error_msg = $e->getMessage();
-            // Try html version of this template if initial template was NOT html
-            if ($ext != '.html' . TWIG_EXT) {
-                try {
-                    $page->templateFormat('html');
-                    $output = $this->twig->render($page->template() . '.html' . TWIG_EXT, $vars + $twig_vars);
-                } catch (\Twig_Error_Loader $e) {
-                    throw new \RuntimeException($error_msg, 400, $e);
-                }
-            } else {
-                throw new \RuntimeException($error_msg, 400, $e);
-            }
+            throw new RuntimeException($error_msg, 400, $e);
         }
 
         return $output;
     }
 
     /**
-     * Wraps the Twig_Loader_Filesystem addPath method (should be used only in `onTwigLoader()` event
-     * @param $template_path
-     * @param null $namespace
+     * Wraps the FilesystemLoader addPath method (should be used only in `onTwigLoader()` event
+     * @param string $template_path
+     * @param string $namespace
+     * @throws LoaderError
      */
     public function addPath($template_path, $namespace = '__main__')
     {
@@ -376,9 +453,10 @@ class Twig
     }
 
     /**
-     * Wraps the Twig_Loader_Filesystem prependPath method (should be used only in `onTwigLoader()` event
-     * @param $template_path
-     * @param null $namespace
+     * Wraps the FilesystemLoader prependPath method (should be used only in `onTwigLoader()` event
+     * @param string $template_path
+     * @param string $namespace
+     * @throws LoaderError
      */
     public function prependPath($template_path, $namespace = '__main__')
     {
@@ -390,24 +468,64 @@ class Twig
      * the one being passed in
      *
      * @param  string $template the template name
-     *
      * @return string           the template name
      */
     public function template($template)
     {
-        if (isset($this->template)) {
-            return $this->template;
-        } else {
-            return $template;
+        return $this->template ?? $template;
+    }
+
+    /**
+     * @param PageInterface $page
+     * @param string|null $format
+     * @return string
+     */
+    public function getPageTwigTemplate($page, &$format = null)
+    {
+        $template = $page->template();
+        $default = $page->isModule() ? 'modular/default' : 'default';
+        $extension = $format ?: $page->templateFormat();
+        $twig_extension = $extension ? '.'. $extension .TWIG_EXT : TEMPLATE_EXT;
+        $template_file = $this->template($page->template() . $twig_extension);
+
+        $page_template = null;
+
+        $loader = $this->twig->getLoader();
+        if ($loader instanceof ExistsLoaderInterface) {
+            if ($loader->exists($template_file)) {
+                // template.xxx.twig
+                $page_template = $template_file;
+            } elseif ($twig_extension !== TEMPLATE_EXT && $loader->exists($template . TEMPLATE_EXT)) {
+                // template.html.twig
+                $page_template = $template . TEMPLATE_EXT;
+                $format = 'html';
+            } elseif ($loader->exists($default . $twig_extension)) {
+                // default.xxx.twig
+                $page_template = $default . $twig_extension;
+            } else {
+                // default.html.twig
+                $page_template = $default . TEMPLATE_EXT;
+                $format = 'html';
+            }
         }
+
+        return $page_template;
+
     }
 
     /**
      * Overrides the autoescape setting
      *
-     * @param boolean $state
+     * @param bool $state
+     * @return void
+     * @deprecated 1.5 Auto-escape should always be turned on to protect against XSS issues (can be disabled per template file).
      */
-    public function setAutoescape($state) {
+    public function setAutoescape($state)
+    {
+        if (!$state) {
+            user_error(__CLASS__ . '::' . __FUNCTION__ . '(false) is deprecated since Grav 1.5', E_USER_DEPRECATED);
+        }
+
         $this->autoescape = (bool) $state;
     }
 }
