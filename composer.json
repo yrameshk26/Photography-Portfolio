@@ -105,6 +105,10 @@
         ]
     },
     "scripts": {
+        "compile": [
+            "bin/grav install",
+            "bin/gpm install multiverse -y"
+          ],
         "api-17": "vendor/bin/phpdoc-md generate system/src > user/pages/14.api/default.17.md",
         "post-create-project-cmd": "bin/grav install",
         "phpstan": "vendor/bin/phpstan analyse -l 1 -c ./tests/phpstan/phpstan.neon --memory-limit=480M system/src",
